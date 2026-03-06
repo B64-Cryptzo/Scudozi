@@ -1,4 +1,4 @@
-﻿{
+{
   description = "Scudozi - self-hosted security visibility with reproducible Nix deployment";
 
   inputs = {
