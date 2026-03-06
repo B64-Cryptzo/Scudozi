@@ -1081,7 +1081,7 @@
       const likely = node.likely_reachability || "unknown";
       const bindScope = node.bind_scope || "unknown";
       const interfaceType = node.interface_type || "unknown";
-      const process = node.process || "unknown";
+      const process = cleanProcessName(node.process || node.label || "unknown");
       const port = node.port || "—";
       const host = node.host || "—";
       const exposure = bindScope.replaceAll("_", " ");
@@ -1101,6 +1101,13 @@
         interfaceType,
         sub
       };
+    }
+
+    function cleanProcessName(value) {
+      const s = String(value || "").trim();
+      if (!s) return "unknown";
+      // Strip endpoint suffix when present, e.g. process@172.23.64.1:2375
+      return s.replace(/@[\[\]a-fA-F0-9\.\:\*]+:\d+$/, "");
     }
 
     function updateDetails(node) {
