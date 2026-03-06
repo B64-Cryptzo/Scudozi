@@ -12,11 +12,18 @@ import (
 	"scudozi/scanner"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 type errorResponse struct {
 	Error string `json:"error"`
 }
+
+var (
+	demoKilledMu       sync.Mutex
+	demoKilledServices = map[string]bool{}
+)
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -26,6 +33,9 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(errorResponse{Error: err.Error()})
 		return
+	}
+	if demoServicesEnabled() {
+		services = append(services, buildDemoServices(demoServicesCount())...)
 	}
 
 	nodes := []graph.Node{
@@ -98,7 +108,9 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req killProcessRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBodyBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
@@ -112,17 +124,47 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "pid unavailable for selected process", http.StatusBadRequest)
 		return
 	}
-	if err := killPID(req.PID); err != nil {
+	if isDemoServiceProcess(req.Process) {
+		markDemoServiceKilled(req.Process)
+		logAudit("process.kill", sess.Username, sess.Role, "success", map[string]any{
+			"pid":       req.PID,
+			"process":   req.Process,
+			"simulated": true,
+		})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"message": fmt.Sprintf("Simulated termination of demo process %s (pid %d)", req.Process, req.PID),
+		})
+		return
+	}
+	resolvedProcess, verified, err := validateKillTarget(req.PID, req.Process)
+	if err != nil {
 		logAudit("process.kill", sess.Username, sess.Role, "error", map[string]any{"pid": req.PID, "process": req.Process, "error": err.Error()})
+		http.Error(w, "failed to validate kill target", http.StatusInternalServerError)
+		return
+	}
+	if !verified {
+		logAudit("process.kill", sess.Username, sess.Role, "denied", map[string]any{"pid": req.PID, "process": req.Process, "reason": "target_verification_failed"})
+		http.Error(w, "kill target verification failed", http.StatusForbidden)
+		return
+	}
+	if isProtectedProcess(req.PID, resolvedProcess) {
+		logAudit("process.kill", sess.Username, sess.Role, "denied", map[string]any{"pid": req.PID, "process": req.Process, "reason": "protected_process"})
+		http.Error(w, "refusing to terminate protected Scudozi process", http.StatusForbidden)
+		return
+	}
+	if err := killPID(req.PID); err != nil {
+		logAudit("process.kill", sess.Username, sess.Role, "error", map[string]any{"pid": req.PID, "process": resolvedProcess, "error": err.Error()})
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logAudit("process.kill", sess.Username, sess.Role, "success", map[string]any{"pid": req.PID, "process": req.Process})
+	logAudit("process.kill", sess.Username, sess.Role, "success", map[string]any{"pid": req.PID, "process": resolvedProcess})
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
-		"message": fmt.Sprintf("Terminated %s (pid %d)", req.Process, req.PID),
+		"message": fmt.Sprintf("Terminated %s (pid %d)", resolvedProcess, req.PID),
 	})
 }
 
@@ -143,6 +185,154 @@ func killPID(pid int) error {
 	}
 }
 
+func isProtectedProcess(pid int, process string) bool {
+	if pid == os.Getpid() || pid <= 1 {
+		return true
+	}
+	p := strings.ToLower(strings.TrimSpace(process))
+	return strings.Contains(p, "scudozi") || strings.Contains(p, ".scudozi-wrappe")
+}
+
+func validateKillTarget(pid int, requestedProcess string) (string, bool, error) {
+	services, err := scanner.ScanPorts()
+	if err != nil {
+		return "", false, err
+	}
+	for _, s := range services {
+		if s.PID != pid {
+			continue
+		}
+		if requestedProcess != "" && !processNamesMatch(requestedProcess, s.Process) {
+			return "", false, nil
+		}
+		return s.Process, true, nil
+	}
+	return "", false, nil
+}
+
+func processNamesMatch(a, b string) bool {
+	na := strings.ToLower(strings.TrimSpace(a))
+	nb := strings.ToLower(strings.TrimSpace(b))
+	if na == nb {
+		return true
+	}
+	return strings.Contains(na, nb) || strings.Contains(nb, na)
+}
+
+func isDemoServiceProcess(process string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(process)), "demo-")
+}
+
+func markDemoServiceKilled(process string) {
+	key := strings.ToLower(strings.TrimSpace(process))
+	demoKilledMu.Lock()
+	demoKilledServices[key] = true
+	demoKilledMu.Unlock()
+}
+
+func demoServicesEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_SERVICES")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func demoServicesCount() int {
+	v := strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_SERVICES_COUNT"))
+	if v == "" {
+		return 4
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 4
+	}
+	if n > 8 {
+		return 8
+	}
+	return n
+}
+
+func buildDemoServices(count int) []scanner.Service {
+	base := []scanner.Service{
+		{
+			RawAddress:         "127.0.0.1:3000",
+			Host:               "127.0.0.1",
+			Port:               "3000",
+			Process:            "demo-local-ui",
+			PID:                9101,
+			BindScope:          "localhost_only",
+			LikelyReachability: "local_only",
+			InterfaceType:      "loopback",
+			Exposed:            false,
+			NodeName:           "demo-local-ui@127.0.0.1:3000",
+			Status:             "local",
+		},
+		{
+			RawAddress:         "192.168.1.25:9090",
+			Host:               "192.168.1.25",
+			Port:               "9090",
+			Process:            "demo-lan-api",
+			PID:                9102,
+			BindScope:          "lan_only",
+			LikelyReachability: "lan_reachable",
+			InterfaceType:      "lan",
+			Exposed:            true,
+			NodeName:           "demo-lan-api@192.168.1.25:9090",
+			Status:             "lan",
+		},
+		{
+			RawAddress:         "0.0.0.0:8000",
+			Host:               "0.0.0.0",
+			Port:               "8000",
+			Process:            "demo-all-iface",
+			PID:                9103,
+			BindScope:          "all_interfaces",
+			LikelyReachability: "potentially_external",
+			InterfaceType:      "all_interfaces",
+			Exposed:            true,
+			NodeName:           "demo-all-iface@0.0.0.0:8000",
+			Status:             "potential",
+		},
+		{
+			RawAddress:         "198.51.100.44:443",
+			Host:               "198.51.100.44",
+			Port:               "443",
+			Process:            "demo-public-edge",
+			PID:                9104,
+			BindScope:          "public_ip_bound",
+			LikelyReachability: "public_interface",
+			InterfaceType:      "public",
+			Exposed:            true,
+			NodeName:           "demo-public-edge@198.51.100.44:443",
+			Status:             "public",
+		},
+		{
+			RawAddress:         "172.23.64.1:2375",
+			Host:               "172.23.64.1",
+			Port:               "2375",
+			Process:            "demo-virtual-daemon",
+			PID:                9105,
+			BindScope:          "virtual_only",
+			LikelyReachability: "unknown",
+			InterfaceType:      "virtual",
+			Exposed:            true,
+			NodeName:           "demo-virtual-daemon@172.23.64.1:2375",
+			Status:             "virtual",
+		},
+	}
+	visible := make([]scanner.Service, 0, len(base))
+	demoKilledMu.Lock()
+	defer demoKilledMu.Unlock()
+	for _, svc := range base {
+		if demoKilledServices[strings.ToLower(strings.TrimSpace(svc.Process))] {
+			continue
+		}
+		visible = append(visible, svc)
+	}
+	if count >= len(visible) {
+		return visible
+	}
+	return visible[:count]
+}
+
 func Run() error {
 	if err := initAuth(); err != nil {
 		return fmt.Errorf("auth init failed: %w", err)
@@ -152,18 +342,30 @@ func Run() error {
 	if strings.TrimSpace(siteDir) == "" {
 		siteDir = "site"
 	}
-	http.Handle("/", securityHeaders(http.FileServer(http.Dir(siteDir))))
-	http.HandleFunc("/graph", securityHeaders(authRequired(graphHandler)).ServeHTTP)
-	http.HandleFunc("/auth/srp/start", securityHeaders(http.HandlerFunc(handleSRPStart)).ServeHTTP)
-	http.HandleFunc("/auth/srp/verify", securityHeaders(http.HandlerFunc(handleSRPVerify)).ServeHTTP)
-	http.HandleFunc("/auth/session", securityHeaders(http.HandlerFunc(handleSession)).ServeHTTP)
-	http.HandleFunc("/auth/logout", securityHeaders(requireStateProtection(handleLogout)).ServeHTTP)
-	http.HandleFunc("/process/kill", securityHeaders(requireStateProtection(killProcessHandler)).ServeHTTP)
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(siteDir)))
+	mux.HandleFunc("/graph", authRequired(graphHandler))
+	mux.HandleFunc("/auth/srp/start", handleSRPStart)
+	mux.HandleFunc("/auth/srp/verify", handleSRPVerify)
+	mux.HandleFunc("/auth/session", handleSession)
+	mux.HandleFunc("/auth/logout", requireStateProtection(handleLogout))
+	mux.HandleFunc("/process/kill", requireStateProtection(killProcessHandler))
 
 	addr := os.Getenv("SCUDOZI_ADDR")
 	if strings.TrimSpace(addr) == "" {
-		addr = ":8080"
+		addr = "127.0.0.1:8080"
 	}
 	log.Printf("Scudozi running on %s\n", addr)
-	return http.ListenAndServe(addr, nil)
+
+	handler := securityHeaders(enforceLocalOnly(mux))
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	return srv.ListenAndServe()
 }

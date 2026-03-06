@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Scudozi</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="/vendor/d3.v7.min.js"></script>
   <style>
     :root {
       --bg-0: #07111f;
@@ -301,13 +301,13 @@
     .details-card {
       flex: 1;
       border-radius: 18px;
-      padding: 18px;
+      padding: 14px 14px 12px;
       background: rgba(7, 14, 28, 0.42);
       border: 1px solid rgba(255,255,255,0.08);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 18px;
+      gap: 10px;
     }
 
     .details-empty {
@@ -327,22 +327,22 @@
       font-weight: 760;
       line-height: 1.08;
       letter-spacing: -0.04em;
-      margin: 0 0 8px 0;
+      margin: 0 0 4px 0;
       overflow-wrap: anywhere;
     }
 
     .node-sub {
       color: var(--muted);
-      font-size: 14px;
+      font-size: 13px;
       margin: 0;
     }
 
     .kv {
       display: grid;
-      grid-template-columns: 96px 1fr;
-      gap: 10px;
+      grid-template-columns: 90px 1fr;
+      gap: 8px;
       align-items: center;
-      padding: 11px 0;
+      padding: 8px 0;
       border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
@@ -352,15 +352,17 @@
 
     .kv-key {
       color: #94a9cc;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.1em;
     }
 
     .kv-value {
       color: #edf4ff;
+      font-size: 15px;
       font-weight: 600;
       word-break: break-word;
+      line-height: 1.2;
     }
 
     .legend {
@@ -433,22 +435,61 @@
     .neutral { color: var(--neutral); }
     .hidden { display: none; }
 
-    .danger-btn {
+    .action-btn {
       width: 100%;
-      margin-top: 6px;
-      border: 1px solid rgba(255, 93, 115, 0.5);
-      background: linear-gradient(180deg, rgba(255, 93, 115, 0.28), rgba(255, 93, 115, 0.14));
-      color: #ffe7eb;
+      margin-top: 4px;
       border-radius: 12px;
-      padding: 11px 12px;
+      padding: 10px 12px;
       font-weight: 700;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
       cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.18);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.07));
+      color: #e9f1ff;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.14),
+        0 10px 26px rgba(5, 11, 24, 0.45);
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
     }
 
-    .danger-btn:disabled {
+    .action-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.28);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.2), rgba(255,255,255,0.09));
+    }
+
+    .action-btn:disabled {
       opacity: 0.45;
       cursor: not-allowed;
+      transform: none;
+    }
+
+    .action-btn.primary {
+      border-color: rgba(122, 183, 255, 0.45);
+      background:
+        linear-gradient(180deg, rgba(88, 156, 255, 0.34), rgba(88, 156, 255, 0.18));
+      color: #f2f7ff;
+    }
+
+    .action-btn.primary:hover {
+      border-color: rgba(156, 205, 255, 0.62);
+      background:
+        linear-gradient(180deg, rgba(102, 169, 255, 0.45), rgba(102, 169, 255, 0.22));
+    }
+
+    .action-btn.danger {
+      border-color: rgba(255, 133, 150, 0.4);
+      background:
+        linear-gradient(180deg, rgba(255, 106, 133, 0.24), rgba(255, 106, 133, 0.12));
+      color: #ffe8ec;
+    }
+
+    .action-btn.danger:hover {
+      border-color: rgba(255, 165, 177, 0.6);
+      background:
+        linear-gradient(180deg, rgba(255, 120, 145, 0.34), rgba(255, 120, 145, 0.16));
     }
 
     .modal-overlay {
@@ -500,17 +541,25 @@
       color: var(--muted);
       font-size: 14px;
       margin: 0 0 14px 0;
+      line-height: 1.35;
     }
 
     .modal-input {
       width: 100%;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(9, 17, 34, 0.72);
+      background: linear-gradient(180deg, rgba(10, 18, 35, 0.86), rgba(8, 15, 29, 0.8));
       color: var(--text);
       padding: 11px 12px;
       font-size: 14px;
       margin-bottom: 12px;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .modal-input:focus {
+      border-color: rgba(124, 180, 255, 0.62);
+      box-shadow: 0 0 0 3px rgba(104, 166, 255, 0.18);
     }
 
     .modal-status {
@@ -537,8 +586,15 @@
 
     .login-card {
       width: min(500px, calc(100vw - 40px));
-      border-radius: 20px;
-      padding: 22px;
+      border-radius: 22px;
+      padding: 22px 22px 20px;
+      background:
+        linear-gradient(165deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)),
+        linear-gradient(180deg, rgba(19, 31, 58, 0.8), rgba(10, 18, 34, 0.72));
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow:
+        0 26px 64px rgba(2, 8, 19, 0.62),
+        inset 0 1px 0 rgba(255,255,255,0.16);
     }
 
     .app.locked {
@@ -647,7 +703,7 @@
               <div class="kv"><div class="kv-key">Exposure</div><div class="kv-value" id="detail-exposure">—</div></div>
               <div class="kv"><div class="kv-key">Risk</div><div class="kv-value" id="detail-risk">—</div></div>
             </div>
-            <button class="danger-btn" id="kill-process-btn" type="button">Kill Process</button>
+            <button class="action-btn danger" id="kill-process-btn" type="button">Kill Process</button>
           </div>
         </div>
       </section>
@@ -695,11 +751,11 @@
       <div class="modal-head">
         <h3 id="login-title">Sign In To Security Dashboard</h3>
       </div>
-      <p class="modal-sub">Authenticate with SRP credentials generated at backend startup.</p>
+      <p class="modal-sub">Secure SRP authentication — your password is never sent to the server.</p>
       <input class="modal-input" id="login-username" type="text" placeholder="Username" autocomplete="username" />
       <input class="modal-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
       <div class="modal-status" id="login-status"></div>
-      <button class="danger-btn" id="login-submit" type="button">Sign In</button>
+      <button class="action-btn primary" id="login-submit" type="button">Sign In</button>
     </section>
   </div>
   <div class="modal-overlay" id="kill-modal-overlay" aria-hidden="true">
@@ -711,7 +767,7 @@
       <p class="modal-sub" id="kill-modal-target">No target selected.</p>
       <input class="modal-input" id="kill-admin-password" type="password" placeholder="Admin password" />
       <div class="modal-status" id="kill-modal-status"></div>
-      <button class="danger-btn" id="kill-confirm-btn" type="button">Confirm Kill Process</button>
+      <button class="action-btn danger" id="kill-confirm-btn" type="button">Confirm Kill Process</button>
     </section>
   </div>
 
@@ -1074,9 +1130,17 @@
       setText("detail-risk", d.risk);
       const killBtn = getEl("kill-process-btn");
       if (killBtn) {
-        const canKill = node.id !== "internet" && d.pid > 0;
+        const processLower = String(d.process || "").toLowerCase();
+        const protectedProc = processLower.includes("scudozi") || processLower.includes(".scudozi-wrappe");
+        const canKill = node.id !== "internet" && d.pid > 0 && !protectedProc;
         killBtn.disabled = !canKill;
-        killBtn.textContent = canKill ? `Kill Process (PID ${d.pid})` : "Kill Process (PID unavailable)";
+        if (canKill) {
+          killBtn.textContent = `Kill Process (PID ${d.pid})`;
+        } else if (protectedProc) {
+          killBtn.textContent = "Kill Process (protected)";
+        } else {
+          killBtn.textContent = "Kill Process (PID unavailable)";
+        }
       }
 
       if (d.likelyReachability === "public_interface") {
@@ -1572,7 +1636,6 @@
   </script>
 </body>
 </html>
-
 
 
 

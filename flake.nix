@@ -23,7 +23,8 @@
             cp -r ${self}/site $out/share/scudozi/site
             wrapProgram $out/bin/scudozi \
               --set-default SCUDOZI_SITE_DIR $out/share/scudozi/site \
-              --set-default SCUDOZI_CREDS_FILE /tmp/scudozi-demo-creds.txt
+              --set-default SCUDOZI_CREDS_FILE /tmp/scudozi-demo-creds.txt \
+              --set-default SCUDOZI_LOG_FILE /tmp/scudozi.log
           '';
         };
       in
@@ -55,4 +56,3 @@
       nixosModules.scudozi = import ./nix/module.nix;
     };
 }
-

@@ -1,154 +1,216 @@
 # Getting Started
 
-This guide helps anyone run Scudozi quickly on stage or locally.
+This guide is for anyone running Scudozi from:
 
-## What You Need
+- a local clone
+- or directly from GitHub: `github:B64-Cryptzo/Scudozi`
 
-- Git
-- Go (for fallback/non-Nix run)
-- Nix (optional but recommended for reproducible demo flow)
+## Prerequisites
+
+- Internet access to fetch Nix inputs and Go dependencies
+- Permission to bind port `8080` (or your configured port)
+- Permission to terminate processes for **Kill Process**:
+  - Linux/macOS may require `sudo` for some targets
+  - Windows may require an elevated terminal for protected targets
+
+## Enable Required Nix Features Once
+
+```bash
+mkdir -p ~/.config/nix
+cat >> ~/.config/nix/nix.conf <<'EOF'
+experimental-features = nix-command flakes
+EOF
+```
+
+Verify:
+
+```bash
+nix --extra-experimental-features "nix-command flakes" --version
+```
 
 ---
 
-## Windows
-
-### Recommended: WSL + Nix
-
-#### 1. Install WSL (PowerShell as Administrator)
-
-```powershell
-wsl --install -d Ubuntu
-```
-
-Reboot if prompted. Open Ubuntu and complete first-time setup.
-
-#### 2. Install Nix inside WSL Ubuntu
+## Fastest Run (Any OS with Nix)
 
 ```bash
-sh <(curl -L https://nixos.org/nix/install) --daemon
+nix --extra-experimental-features "nix-command flakes" run github:B64-Cryptzo/Scudozi
 ```
 
-Restart the WSL terminal, then verify:
+Then open `http://localhost:8080`.
 
-```bash
-nix --version
-```
-
-#### 3. Run Scudozi
-
-```bash
-cd /mnt/c/Users/EnzoGenovese/Documents/Scudozi
-nix run .
-```
-
-#### 4. Get Login Credentials
+Get startup credentials:
 
 ```bash
 cat /tmp/scudozi-demo-creds.txt
 ```
 
-Open `http://localhost:8080` in your Windows browser.
-
-### Fallback (No Nix)
-
-From Git Bash or PowerShell in repo root:
+Tail JSON audit log:
 
 ```bash
+tail -f /tmp/scudozi.log
+```
+
+---
+
+## Windows
+
+### Recommended: WSL2 Ubuntu + Nix
+
+1. Install WSL2 (PowerShell as Administrator):
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+2. Inside Ubuntu, install Nix:
+
+```bash
+sh <(curl -L https://nixos.org/nix/install) --daemon
+```
+
+3. Clone repo to a template path and enter it:
+
+```bash
+git clone https://github.com/B64-Cryptzo/Scudozi.git ~/projects/scudozi
+cd ~/projects/scudozi
+```
+
+4. If your repo is under `/mnt/<drive>/...`, mark it safe in WSL Git:
+
+```bash
+git config --global --add safe.directory /mnt/<drive>/Users/<windows-user>/<path-to-repo>
+```
+
+5. Run:
+
+```bash
+nix --extra-experimental-features "nix-command flakes" run .
+cat /tmp/scudozi-demo-creds.txt
+tail -f /tmp/scudozi.log
+```
+
+### Native Windows fallback (no Nix)
+
+```powershell
 go run .
-cat ./scudozi-demo-creds.txt
+Get-Content .\scudozi-demo-creds.txt
+Get-Content .\scudozi.log -Wait
 ```
 
 ---
 
 ## macOS
 
-### Install Nix
+1. Install Nix:
 
 ```bash
 sh <(curl -L https://nixos.org/nix/install) --daemon
 ```
 
-Restart terminal, verify:
+2. Clone and run:
 
 ```bash
-nix --version
+git clone https://github.com/B64-Cryptzo/Scudozi.git ~/projects/scudozi
+cd ~/projects/scudozi
+nix --extra-experimental-features "nix-command flakes" run .
 ```
 
-### Run Scudozi
+3. Credentials and logs:
 
 ```bash
-nix run .
 cat /tmp/scudozi-demo-creds.txt
-```
-
-Open `http://localhost:8080`.
-
-### Fallback (No Nix)
-
-```bash
-go run .
-cat ./scudozi-demo-creds.txt
+tail -f /tmp/scudozi.log
 ```
 
 ---
 
 ## Linux
 
-### Install Nix
+1. Install Nix:
 
 ```bash
 sh <(curl -L https://nixos.org/nix/install) --daemon
 ```
 
-Restart shell, verify:
+2. Clone and run:
 
 ```bash
-nix --version
+git clone https://github.com/B64-Cryptzo/Scudozi.git ~/projects/scudozi
+cd ~/projects/scudozi
+nix --extra-experimental-features "nix-command flakes" run .
 ```
 
-### Run Scudozi
+3. Credentials and logs:
 
 ```bash
-nix run .
 cat /tmp/scudozi-demo-creds.txt
+tail -f /tmp/scudozi.log
 ```
 
-Open `http://localhost:8080`.
+---
 
-### Fallback (No Nix)
+## Local Development
+
+```bash
+nix --extra-experimental-features "nix-command flakes" develop
+go run .
+```
+
+Without Nix:
 
 ```bash
 go run .
-cat ./scudozi-demo-creds.txt
 ```
 
 ---
 
-## Demo Quick Check (All OS)
+## Demo-Friendly Runtime Flags
 
-1. Start service (`nix run .` or `go run .`)
-2. Read generated credentials file
-3. Sign in at `http://localhost:8080`
-4. Start a temporary listener to see graph updates:
+Use these when your host has few open listeners (common in WSL):
 
 ```bash
-python -m http.server 8000 --bind 0.0.0.0
+go run . --demo-services --demo-services-count 5
+# or
+nix --extra-experimental-features "nix-command flakes" run . -- --demo-services --demo-services-count 5
 ```
 
-5. Verify node appears and details update.
+Custom audit log location:
+
+```bash
+go run . --log-file ./scudozi.log
+# or
+nix --extra-experimental-features "nix-command flakes" run . -- --log-file ./scudozi.log
+```
+
+Also stream audit log to stdout:
+
+```bash
+go run . --log-stdout
+```
 
 ---
 
-## Optional: Fixed Demo Credentials
+## Stable Demo Credentials (Optional)
 
-If you want stable credentials during a live demo:
+Set fixed credentials for stage demos:
 
 ```bash
-SCUDOZI_DEMO_USER=demo-admin SCUDOZI_DEMO_PASS='DemoPass123!' nix run .
+SCUDOZI_DEMO_USER=demo-admin SCUDOZI_DEMO_PASS='DemoPass123!' nix --extra-experimental-features "nix-command flakes" run .
 ```
 
-Or with Go:
+Or without Nix:
 
 ```bash
 SCUDOZI_DEMO_USER=demo-admin SCUDOZI_DEMO_PASS='DemoPass123!' go run .
 ```
+
+---
+
+## Quick Verification Checklist
+
+1. Start Scudozi
+2. Read generated credentials file
+3. Login succeeds on `http://localhost:8080`
+4. `GET /graph` updates every refresh cycle in UI
+5. Audit entries appear in log file
+6. `--demo-services` shows extra nodes and allows simulated kill flow for `demo-*` services

@@ -1,4 +1,4 @@
-﻿# Scudozi
+# Scudozi
 
 Scudozi is a self-hosted security visibility dashboard for local infrastructure. It scans listening TCP services, classifies bind scope and likely reachability, and visualizes the attack surface in a browser.
 
@@ -38,7 +38,7 @@ Benefits:
 ### Option A: Local run with Nix
 
 ```bash
-nix run .
+nix --extra-experimental-features "nix-command flakes" run .
 ```
 
 Then open `http://localhost:8080`.
@@ -54,14 +54,14 @@ Use those credentials on the login screen.
 ### Option B: Dev shell
 
 ```bash
-nix develop
+nix --extra-experimental-features "nix-command flakes" develop
 go run .
 ```
 
-## 2–3 Minute Demo Scenario
+## 2-3 Minute Demo Scenario
 
 1. **Start service**
-   - `nix run .`
+   - `nix --extra-experimental-features "nix-command flakes" run .`
 2. **Open dashboard + sign in**
    - `cat /tmp/scudozi-demo-creds.txt`
    - login in browser
@@ -71,8 +71,15 @@ go run .
    - watch new node appear with scope/reachability classification
 5. **Show policy control**
    - select node and use step-up verification for kill action
+   - demo services (`demo-*`) use simulated termination so stage demos do not kill host processes
 6. **Show reproducible deployment story**
    - point to NixOS module below
+
+If your host has few/no listeners (common in WSL), run with demo nodes:
+
+```bash
+nix --extra-experimental-features "nix-command flakes" run . -- --demo-services --demo-services-count 5
+```
 
 ## NixOS Service Deployment
 
@@ -80,7 +87,7 @@ Import this flake module and enable:
 
 ```nix
 {
-  inputs.scudozi.url = "github:<your-org>/<your-repo>";
+  inputs.scudozi.url = "github:B64-Cryptzo/Scudozi";
 
   outputs = { self, nixpkgs, scudozi, ... }: {
     nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
@@ -127,6 +134,7 @@ Useful options:
 +- nix/module.nix
 +- main.go
 +- README.md
++- GETTING_STARTED.md
 ```
 
 ## Security Notes
@@ -135,18 +143,26 @@ Useful options:
 - Access session uses short-lived cookie protections (`HttpOnly`, `SameSite=Strict`, max-age 12h)
 - CSRF protection on state-changing endpoints
 - Step-up verification token required for kill operations
-- Audit events emitted on auth/kill flows
+- Audit events are emitted as JSON lines (`SCUDOZI_LOG_FILE`)
 
 ## Commands
 
 ```bash
 # Build
-nix build .
+nix --extra-experimental-features "nix-command flakes" build .
 
-# Run
-nix run .
+# Run local flake
+nix --extra-experimental-features "nix-command flakes" run .
+
+# Run directly from GitHub
+nix --extra-experimental-features "nix-command flakes" run github:B64-Cryptzo/Scudozi
 
 # Development shell
-nix develop
-```
+nix --extra-experimental-features "nix-command flakes" develop
 
+# Demo nodes for empty hosts (WSL/stage)
+nix --extra-experimental-features "nix-command flakes" run . -- --demo-services --demo-services-count 5
+
+# Optional custom audit log path
+nix --extra-experimental-features "nix-command flakes" run . -- --log-file ./scudozi.log
+```

@@ -22,6 +22,7 @@ const (
 	accessCookieName = "scudozi_access"
 	csrfCookieName   = "scudozi_csrf"
 	accessMaxAgeSec  = 12 * 60 * 60
+	maxJSONBodyBytes = 16 << 10
 )
 
 var (
@@ -82,13 +83,32 @@ var (
 
 	generatedUsername string
 	generatedPassword string
+	auditLogPath      string
+	auditStdout       bool
+	useColor          bool
+	auditLogMu        sync.Mutex
+	authRateMu        sync.Mutex
+	authRate          = map[string]authRateEntry{}
 )
+
+type authRateEntry struct {
+	WindowStart time.Time
+	Count       int
+}
 
 type contextKey string
 
 const sessionContextKey = contextKey("session")
 
 func initAuth() error {
+	auditLogPath = strings.TrimSpace(os.Getenv("SCUDOZI_LOG_FILE"))
+	if auditLogPath == "" {
+		auditLogPath = "./scudozi.log"
+	}
+	auditStdout = strings.EqualFold(strings.TrimSpace(os.Getenv("SCUDOZI_LOG_STDOUT")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("SCUDOZI_LOG_STDOUT")), "true")
+	useColor = os.Getenv("NO_COLOR") == "" && strings.ToLower(strings.TrimSpace(os.Getenv("TERM"))) != "dumb"
+
 	var ok bool
 	srpN, ok = new(big.Int).SetString(srpNHex, 16)
 	if !ok {
@@ -113,10 +133,11 @@ func initAuth() error {
 	logAudit("auth.credentials.generated", generatedUsername, "admin", "success", map[string]any{
 		"note": "Generated startup credentials for SRP login",
 	})
-	fmt.Printf("[Scudozi] SRP Username: %s\n", generatedUsername)
-	fmt.Printf("[Scudozi] SRP Password: %s\n", generatedPassword)
-	fmt.Printf("[Scudozi] Keep these credentials secure; restart regenerates them.\n")
+	fmt.Printf("%s[Scudozi]%s SRP Username: %s\n", color("36"), color("0"), generatedUsername)
+	fmt.Printf("%s[Scudozi]%s SRP Password: %s\n", color("36"), color("0"), generatedPassword)
+	fmt.Printf("%s[Scudozi]%s Credentials regenerate on restart unless SCUDOZI_DEMO_USER/SCUDOZI_DEMO_PASS are set.\n", color("36"), color("0"))
 	writeDemoCredsFile(generatedUsername, generatedPassword)
+	fmt.Printf("%s[Scudozi]%s Audit log file: %s\n", color("36"), color("0"), auditLogPath)
 	return nil
 }
 
@@ -137,10 +158,16 @@ func handleSRPStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !allowAuthAttempt(clientIP(r), "srp_start", 30, time.Minute) {
+		http.Error(w, "too many authentication attempts", http.StatusTooManyRequests)
+		return
+	}
 	cleanupAuthState()
 
 	var req srpStartRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBodyBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
@@ -237,10 +264,16 @@ func handleSRPVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !allowAuthAttempt(clientIP(r), "srp_verify", 30, time.Minute) {
+		http.Error(w, "too many authentication attempts", http.StatusTooManyRequests)
+		return
+	}
 	cleanupAuthState()
 
 	var req srpVerifyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBodyBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
@@ -454,7 +487,23 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://d3js.org; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+		if isSecureRequest(r) {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func enforceLocalOnly(next http.Handler) http.Handler {
+	if allowRemoteRequests() {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackClient(r) {
+			http.Error(w, "remote access disabled for demo mode", http.StatusForbidden)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -516,7 +565,7 @@ func logAudit(event, username, role, outcome string, details map[string]any) {
 		entry["details"] = details
 	}
 	b, _ := json.Marshal(entry)
-	fmt.Printf("[AUDIT] %s\n", string(b))
+	appendAuditLine(string(b))
 }
 
 func computeX(username, password string, salt []byte) *big.Int {
@@ -595,16 +644,51 @@ func mustRandBytes(numBytes int) []byte {
 }
 
 func remoteIP(r *http.Request) string {
-	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
+	// In demo mode, don't trust forwarded headers for security decisions.
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return h
+}
+
+func clientIP(r *http.Request) string {
+	return remoteIP(r)
+}
+
+func isLoopbackClient(r *http.Request) bool {
+	ip := net.ParseIP(clientIP(r))
+	return ip != nil && ip.IsLoopback()
+}
+
+func allowRemoteRequests() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SCUDOZI_ALLOW_REMOTE")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func allowAuthAttempt(client, action string, maxAttempts int, window time.Duration) bool {
+	if client == "" {
+		client = "unknown"
+	}
+	key := action + "|" + client
+	now := time.Now()
+
+	authRateMu.Lock()
+	defer authRateMu.Unlock()
+
+	for k, e := range authRate {
+		if now.Sub(e.WindowStart) > 2*window {
+			delete(authRate, k)
+		}
+	}
+
+	entry := authRate[key]
+	if entry.WindowStart.IsZero() || now.Sub(entry.WindowStart) > window {
+		entry = authRateEntry{WindowStart: now, Count: 0}
+	}
+	entry.Count++
+	authRate[key] = entry
+	return entry.Count <= maxAttempts
 }
 
 func writeDemoCredsFile(username, password string) {
@@ -614,8 +698,29 @@ func writeDemoCredsFile(username, password string) {
 	}
 	content := fmt.Sprintf("username=%s\npassword=%s\n", username, password)
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		fmt.Printf("[Scudozi] Failed to write creds file (%s): %v\n", path, err)
+		fmt.Printf("%s[Scudozi]%s Failed to write creds file (%s): %v\n", color("36"), color("0"), path, err)
 		return
 	}
-	fmt.Printf("[Scudozi] Credentials also written to %s\n", path)
+	fmt.Printf("%s[Scudozi]%s Credentials also written to %s\n", color("36"), color("0"), path)
+}
+
+func appendAuditLine(line string) {
+	auditLogMu.Lock()
+	defer auditLogMu.Unlock()
+
+	f, err := os.OpenFile(auditLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err == nil {
+		_, _ = f.WriteString(line + "\n")
+		_ = f.Close()
+	}
+	if auditStdout {
+		fmt.Printf("[AUDIT] %s\n", line)
+	}
+}
+
+func color(code string) string {
+	if !useColor {
+		return ""
+	}
+	return "\x1b[" + code + "m"
 }
