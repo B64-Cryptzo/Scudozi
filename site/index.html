@@ -137,6 +137,47 @@
       max-width: 720px;
     }
 
+    .hero-meta {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 12px;
+    }
+
+    .scan-delta {
+      font-size: 12px;
+      color: #b7c7e7;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      padding: 6px 10px;
+      white-space: nowrap;
+    }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-chip {
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: #dce8ff;
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 6px 10px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .filter-chip.active {
+      border-color: rgba(133, 186, 255, 0.6);
+      background: rgba(105, 166, 255, 0.22);
+      color: #f1f7ff;
+    }
+
     .stats {
       display: grid;
       grid-template-columns: repeat(4, minmax(132px, 1fr));
@@ -638,6 +679,16 @@
           <div>
             <h1>Scudozi</h1>
             <p class="subtitle" id="subtitle">Real-time attack surface visualization for self-hosted systems.</p>
+            <div class="hero-meta">
+              <div class="scan-delta" id="scan-delta">Changes: waiting for first scan...</div>
+              <div class="filter-bar" id="filter-bar" aria-label="Risk filters">
+                <button class="filter-chip active" type="button" data-filter="all">All</button>
+                <button class="filter-chip" type="button" data-filter="public">Public</button>
+                <button class="filter-chip" type="button" data-filter="potential">Potential</button>
+                <button class="filter-chip" type="button" data-filter="lan">LAN</button>
+                <button class="filter-chip" type="button" data-filter="local">Local</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -702,6 +753,7 @@
               <div class="kv"><div class="kv-key">Interface</div><div class="kv-value" id="detail-iface">—</div></div>
               <div class="kv"><div class="kv-key">Exposure</div><div class="kv-value" id="detail-exposure">—</div></div>
               <div class="kv"><div class="kv-key">Risk</div><div class="kv-value" id="detail-risk">—</div></div>
+              <div class="kv"><div class="kv-key">Action</div><div class="kv-value" id="detail-action">—</div></div>
             </div>
             <button class="action-btn danger" id="kill-process-btn" type="button">Kill Process</button>
           </div>
@@ -790,6 +842,8 @@
     let selectedNodeData = null;
     let graphTimer = null;
     let sessionUser = null;
+    let activeRiskFilter = "all";
+    let previousNodeSnapshot = null;
     const displayNodePositions = new Map();
     const nodeOscPhases = new Map();
     let animationTick = 0;
@@ -987,6 +1041,74 @@
       };
     }
 
+    function applyRiskFilter(graph) {
+      if (activeRiskFilter === "all") return graph;
+      const allowed = new Set(["internet"]);
+      for (const node of graph.nodes || []) {
+        if (node.id === "internet") continue;
+        if ((node.status || "unknown") === activeRiskFilter) allowed.add(node.id);
+      }
+      return {
+        nodes: (graph.nodes || []).filter((n) => allowed.has(n.id)),
+        edges: (graph.edges || []).filter((e) => {
+          const s = typeof e.source === "object" ? e.source.id : e.source;
+          const t = typeof e.target === "object" ? e.target.id : e.target;
+          return allowed.has(s) && allowed.has(t);
+        }),
+      };
+    }
+
+    function setRiskFilter(nextFilter) {
+      activeRiskFilter = nextFilter || "all";
+      document.querySelectorAll("#filter-bar .filter-chip").forEach((el) => {
+        el.classList.toggle("active", el.dataset.filter === activeRiskFilter);
+      });
+      if (latestPayload) render(latestPayload);
+    }
+
+    function riskRank(status) {
+      switch (status) {
+        case "local": return 0;
+        case "lan": return 1;
+        case "virtual": return 2;
+        case "unknown": return 2;
+        case "potential": return 3;
+        case "public": return 4;
+        default: return 2;
+      }
+    }
+
+    function summarizeChanges(rawGraph) {
+      const current = new Map();
+      for (const node of rawGraph.nodes || []) {
+        if (node.id === "internet") continue;
+        current.set(node.id, node.status || "unknown");
+      }
+      if (!previousNodeSnapshot) {
+        previousNodeSnapshot = current;
+        return "Changes: baseline captured.";
+      }
+
+      let added = 0;
+      let removed = 0;
+      let riskUp = 0;
+
+      for (const [id, status] of current.entries()) {
+        if (!previousNodeSnapshot.has(id)) {
+          added++;
+          continue;
+        }
+        const prevStatus = previousNodeSnapshot.get(id);
+        if (riskRank(status) > riskRank(prevStatus)) riskUp++;
+      }
+      for (const id of previousNodeSnapshot.keys()) {
+        if (!current.has(id)) removed++;
+      }
+
+      previousNodeSnapshot = current;
+      return `Changes: +${added} new, -${removed} closed, ${riskUp} risk-up`;
+    }
+
     function edgeKey(edge) {
       const source = typeof edge.source === "object" ? edge.source.id : edge.source;
       const target = typeof edge.target === "object" ? edge.target.id : edge.target;
@@ -1110,6 +1232,33 @@
       return s.replace(/@[\[\]a-fA-F0-9\.\:\*]+:\d+$/, "");
     }
 
+    function remediationForNode(details) {
+      if (!details || details.process === "External Reachability") return "Use as reference node.";
+      const port = String(details.port || "").trim();
+      const riskyPorts = new Set(["22", "23", "80", "443", "445", "139", "3389", "2375", "3306", "5432", "6379", "9200", "8000", "8080"]);
+
+      if (details.likelyReachability === "public_interface") {
+        return riskyPorts.has(port)
+          ? "High priority: restrict firewall immediately and bind service to LAN/localhost."
+          : "Review necessity of public binding; prefer reverse proxy + allowlist.";
+      }
+      if (details.likelyReachability === "potentially_external") {
+        return riskyPorts.has(port)
+          ? "Reduce exposure: avoid 0.0.0.0 on sensitive/common ports."
+          : "Validate firewall and bind scope; move to LAN or localhost if possible.";
+      }
+      if (details.likelyReachability === "lan_reachable") {
+        return "Confirm LAN-only intent and apply host firewall allowlist.";
+      }
+      if (details.bindScope === "virtual_only") {
+        return "Check virtual/vpn adapter scope and restrict to required interface only.";
+      }
+      if (details.likelyReachability === "local_only") {
+        return "Good: keep localhost-only unless remote access is required.";
+      }
+      return "Investigate interface mapping and tighten bind address if uncertain.";
+    }
+
     function updateDetails(node) {
       const empty = document.getElementById("details-empty");
       const content = document.getElementById("details-content");
@@ -1143,6 +1292,7 @@
       setText("detail-iface", d.interfaceType);
       setText("detail-exposure", d.exposure);
       setText("detail-risk", d.risk);
+      setText("detail-action", remediationForNode(d));
       const killBtn = getEl("kill-process-btn");
       if (killBtn) {
         const processLower = String(d.process || "").toLowerCase();
@@ -1172,16 +1322,19 @@
       pillDot.className = `pill-dot ${node.status || "neutral"}`;
     }
 
-    function updateStats(payload, graph) {
-      const totalServices = Math.max(0, graph.nodes.length - 1);
-      const exposed = graph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability !== "local_only").length;
-      const safe = graph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability === "local_only").length;
+    function updateStats(payload, rawGraph, visibleGraph) {
+      const totalServices = Math.max(0, rawGraph.nodes.length - 1);
+      const exposed = rawGraph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability !== "local_only").length;
+      const safe = rawGraph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability === "local_only").length;
+      const visible = Math.max(0, (visibleGraph?.nodes || []).length - 1);
+      const filterLabel = activeRiskFilter === "all" ? "all" : activeRiskFilter;
 
       setText("stat-total", totalServices);
       setText("stat-exposed", exposed);
       setText("stat-safe", safe);
-      setText("stat-os", (payload.os || "—").toUpperCase());
-      setText("subtitle", `Real-time attack surface visualization for self-hosted systems on ${(payload.os || "unknown").toUpperCase()}.`);
+      setText("stat-os", (payload.os || "unknown").toUpperCase());
+      setText("subtitle", `Real-time attack surface visualization for ${(payload.os || "unknown").toUpperCase()} (${visible}/${totalServices} shown, filter: ${filterLabel}).`);
+      setText("scan-delta", summarizeChanges(rawGraph));
       setText("last-scan", formatNow());
     }
 
@@ -1200,9 +1353,10 @@
 
     function render(payload) {
       latestPayload = payload;
-      const graph = dedupeGraph(payload.graph || { nodes: [], edges: [] });
+      const rawGraph = dedupeGraph(payload.graph || { nodes: [], edges: [] });
+      const graph = applyRiskFilter(rawGraph);
 
-      updateStats(payload, graph);
+      updateStats(payload, rawGraph, graph);
 
       svg.attr("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
 
@@ -1696,6 +1850,9 @@
     });
 
     getEl("login-submit").addEventListener("click", submitLogin);
+    document.querySelectorAll("#filter-bar .filter-chip").forEach((btn) => {
+      btn.addEventListener("click", () => setRiskFilter(btn.dataset.filter));
+    });
     getEl("login-password").addEventListener("keydown", (e) => {
       if (e.key === "Enter") submitLogin();
     });
@@ -1725,3 +1882,5 @@
   </script>
 </body>
 </html>
+
+

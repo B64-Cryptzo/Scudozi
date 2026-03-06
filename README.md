@@ -11,6 +11,7 @@ For OS-specific setup instructions, see [GETTING_STARTED.md](./GETTING_STARTED.m
   - `bind_scope` (`localhost_only`, `lan_only`, `all_interfaces`, etc.)
   - `likely_reachability` (`local_only`, `lan_reachable`, `potentially_external`, etc.)
 - Shows a live graph and service details for security triage
+- Includes on-screen risk filters, scan-change summary, and per-node remediation guidance
 - Supports authenticated process termination with step-up verification
 
 ## Why It Matters For Self-Hosting
@@ -144,6 +145,7 @@ Useful options:
 - CSRF protection on state-changing endpoints
 - Step-up verification token required for kill operations
 - Audit events are emitted as JSON lines (`SCUDOZI_LOG_FILE`)
+- Health/runtime endpoints are available: `/healthz`, `/readyz`, `/version`
 
 ## Commands
 

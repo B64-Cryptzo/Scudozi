@@ -1,18 +1,22 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"scudozi/graph"
 	"scudozi/scanner"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -23,6 +27,10 @@ type errorResponse struct {
 var (
 	demoKilledMu       sync.Mutex
 	demoKilledServices = map[string]bool{}
+	startedAt          = time.Now().UTC()
+	version            = "dev"
+	commit             = "unknown"
+	buildDate          = "unknown"
 )
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +352,9 @@ func Run() error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir(siteDir)))
+	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/readyz", readyHandler)
+	mux.HandleFunc("/version", versionHandler)
 	mux.HandleFunc("/graph", authRequired(graphHandler))
 	mux.HandleFunc("/auth/srp/start", handleSRPStart)
 	mux.HandleFunc("/auth/srp/verify", handleSRPVerify)
@@ -367,5 +378,74 @@ func Run() error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	return srv.ListenAndServe()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		log.Printf("Scudozi shutting down...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown failed: %w", err)
+		}
+		return nil
+	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"time":   time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	siteDir := os.Getenv("SCUDOZI_SITE_DIR")
+	if strings.TrimSpace(siteDir) == "" {
+		siteDir = "site"
+	}
+	if _, err := os.Stat(siteDir); err != nil {
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":   "ready",
+		"site_dir": siteDir,
+	})
+}
+
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"version":    version,
+		"commit":     commit,
+		"build_date": buildDate,
+		"uptime_sec": int(time.Since(startedAt).Seconds()),
+	})
 }
