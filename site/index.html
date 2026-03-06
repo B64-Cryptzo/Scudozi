@@ -793,6 +793,11 @@
     const displayNodePositions = new Map();
     const nodeOscPhases = new Map();
     let animationTick = 0;
+    let linkForce = null;
+    let xForce = null;
+    let yForce = null;
+    let centerForce = null;
+    const centerLerp = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.56 };
 
     function setText(id, value) {
       const el = document.getElementById(id);
@@ -1174,7 +1179,7 @@
     }
 
     function targetCenterX() {
-      return selectedNodeId ? window.innerWidth * 0.43 : window.innerWidth * 0.5;
+      return selectedNodeId ? window.innerWidth * 0.38 : window.innerWidth * 0.5;
     }
 
     function targetCenterY() {
@@ -1183,14 +1188,6 @@
 
     function applyCenterForce(reheat = false) {
       if (!simulation) return;
-      const internet = simulation.nodes().find((n) => n.id === "internet");
-      if (internet) {
-        internet.fx = targetCenterX();
-        internet.fy = targetCenterY();
-      }
-      simulation.force("x", d3.forceX(targetCenterX()).strength(0.06));
-      simulation.force("y", d3.forceY(targetCenterY()).strength(0.06));
-      simulation.force("center", d3.forceCenter(targetCenterX(), targetCenterY()));
       if (reheat) simulation.alpha(0.35).restart();
     }
 
@@ -1234,16 +1231,16 @@
 
       const internet = graph.nodes.find((n) => n.id === "internet");
       if (internet) {
-        internet.fx = targetCenterX();
-        internet.fy = targetCenterY();
+        internet.fx = centerLerp.x;
+        internet.fy = centerLerp.y;
       }
 
       const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
       const animateSpawn = hasRendered;
       const enteringNodeIds = new Set(graph.nodes.map((n) => n.id).filter((id) => !knownNodeIds.has(id)));
       const enteringEdgeKeys = new Set(graph.edges.map((e) => edgeKey(e)).filter((k) => !knownEdgeKeys.has(k)));
-      const centerX = internet ? internet.x : targetCenterX();
-      const centerY = internet ? internet.y : targetCenterY();
+      const centerX = centerLerp.x;
+      const centerY = centerLerp.y;
 
       if (animateSpawn) {
         const spawnEdges = graph.edges.filter((edge) => {
@@ -1388,12 +1385,16 @@
       }
 
       if (!simulation) {
+        linkForce = d3.forceLink(graph.edges).id(d => d.id).distance(d => d.source.id === "internet" ? 165 : 138).strength(0.66);
+        xForce = d3.forceX(centerLerp.x).strength(0.06);
+        yForce = d3.forceY(centerLerp.y).strength(0.06);
+        centerForce = d3.forceCenter(centerLerp.x, centerLerp.y);
         simulation = d3.forceSimulation(graph.nodes)
-          .force("link", d3.forceLink(graph.edges).id(d => d.id).distance(d => d.source.id === "internet" ? 165 : 138).strength(0.66))
+          .force("link", linkForce)
           .force("charge", d3.forceManyBody().strength(-620))
-          .force("x", d3.forceX(targetCenterX()).strength(0.06))
-          .force("y", d3.forceY(targetCenterY()).strength(0.06))
-          .force("center", d3.forceCenter(targetCenterX(), targetCenterY()))
+          .force("x", xForce)
+          .force("y", yForce)
+          .force("center", centerForce)
           .force("collide", d3.forceCollide().radius(d => d.id === "internet" ? 62 : 46));
       } else {
         simulation.nodes(graph.nodes);
@@ -1439,16 +1440,29 @@
         animationTick++;
         const padding = 28;
         const maxRadius = selectedNodeId ? Math.min(window.innerWidth, window.innerHeight) * 0.29 : Math.min(window.innerWidth, window.innerHeight) * 0.33;
-        const cx = targetCenterX();
-        const cy = targetCenterY();
+        centerLerp.x += (targetCenterX() - centerLerp.x) * 0.08;
+        centerLerp.y += (targetCenterY() - centerLerp.y) * 0.08;
+        const cx = centerLerp.x;
+        const cy = centerLerp.y;
         const now = performance.now() * 0.001;
         const breathe = 1 + 0.14 * Math.sin(now * 1.8);
+        const rotationSpeed = 0.12;
+        const rotationAngle = now * rotationSpeed;
 
         if (animationTick % 4 === 0) {
-          const linkForce = simulation.force("link");
           if (linkForce) {
             linkForce.distance((d) => (d.source.id === "internet" ? 165 : 138) * breathe);
           }
+        }
+        if (xForce && yForce && centerForce) {
+          xForce.x(cx);
+          yForce.y(cy);
+          centerForce.x(cx).y(cy);
+        }
+        const internetNode = graph.nodes.find((n) => n.id === "internet");
+        if (internetNode) {
+          internetNode.fx = cx;
+          internetNode.fy = cy;
         }
 
         for (const node of graph.nodes) {
@@ -1481,18 +1495,35 @@
           displayNodePositions.set(node.id, { x: drawX, y: drawY });
         }
 
+        const rotatedPositions = new Map();
+        const cosR = Math.cos(rotationAngle);
+        const sinR = Math.sin(rotationAngle);
+        for (const node of graph.nodes) {
+          const draw = displayNodePositions.get(node.id) || node;
+          if (node.id === "internet") {
+            rotatedPositions.set(node.id, { x: draw.x, y: draw.y });
+            continue;
+          }
+          const dx = draw.x - cx;
+          const dy = draw.y - cy;
+          rotatedPositions.set(node.id, {
+            x: cx + dx * cosR - dy * sinR,
+            y: cy + dx * sinR + dy * cosR,
+          });
+        }
+
         allLinks
-          .attr("x1", d => (displayNodePositions.get(d.source.id) || d.source).x)
-          .attr("y1", d => (displayNodePositions.get(d.source.id) || d.source).y)
-          .attr("x2", d => (displayNodePositions.get(d.target.id) || d.target).x)
-          .attr("y2", d => (displayNodePositions.get(d.target.id) || d.target).y);
+          .attr("x1", d => (rotatedPositions.get(d.source.id) || displayNodePositions.get(d.source.id) || d.source).x)
+          .attr("y1", d => (rotatedPositions.get(d.source.id) || displayNodePositions.get(d.source.id) || d.source).y)
+          .attr("x2", d => (rotatedPositions.get(d.target.id) || displayNodePositions.get(d.target.id) || d.target).x)
+          .attr("y2", d => (rotatedPositions.get(d.target.id) || displayNodePositions.get(d.target.id) || d.target).y);
 
         allNodes.attr("transform", d => {
-          const draw = displayNodePositions.get(d.id) || d;
+          const draw = rotatedPositions.get(d.id) || displayNodePositions.get(d.id) || d;
           return `translate(${draw.x},${draw.y})`;
         });
         allLabels.attr("transform", d => {
-          const draw = displayNodePositions.get(d.id) || d;
+          const draw = rotatedPositions.get(d.id) || displayNodePositions.get(d.id) || d;
           return `translate(${draw.x + 22},${draw.y - 4})`;
         });
         applyLabelVisibility(allLabels);
@@ -1687,4 +1718,3 @@
   </script>
 </body>
 </html>
-
