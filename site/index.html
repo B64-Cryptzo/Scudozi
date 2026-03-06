@@ -1402,7 +1402,7 @@
 
       simulation.force("link").links(graph.edges);
       applyCenterForce(false);
-      simulation.alphaTarget(0.018);
+      simulation.alphaTarget(0.032);
       simulation.alpha(0.22).restart();
 
       allLinks
@@ -1442,9 +1442,9 @@
         const cx = targetCenterX();
         const cy = targetCenterY();
         const now = performance.now() * 0.001;
-        const breathe = 1 + 0.055 * Math.sin(now * 1.2);
+        const breathe = 1 + 0.14 * Math.sin(now * 1.8);
 
-        if (animationTick % 12 === 0) {
+        if (animationTick % 4 === 0) {
           const linkForce = simulation.force("link");
           if (linkForce) {
             linkForce.distance((d) => (d.source.id === "internet" ? 165 : 138) * breathe);
@@ -1472,12 +1472,12 @@
           let targetX = node.x;
           let targetY = node.y;
           if (node.id !== "internet") {
-            targetX += Math.cos(now * 1.55 + phase) * 2.4;
-            targetY += Math.sin(now * 1.3 + phase) * 2.1;
+            targetX += Math.cos(now * 1.95 + phase) * 6.8;
+            targetY += Math.sin(now * 1.65 + phase) * 5.9;
           }
           const prevDraw = displayNodePositions.get(node.id);
-          const drawX = prevDraw ? prevDraw.x + (targetX - prevDraw.x) * 0.22 : targetX;
-          const drawY = prevDraw ? prevDraw.y + (targetY - prevDraw.y) * 0.22 : targetY;
+          const drawX = prevDraw ? prevDraw.x + (targetX - prevDraw.x) * 0.34 : targetX;
+          const drawY = prevDraw ? prevDraw.y + (targetY - prevDraw.y) * 0.34 : targetY;
           displayNodePositions.set(node.id, { x: drawX, y: drawY });
         }
 
@@ -1687,5 +1687,4 @@
   </script>
 </body>
 </html>
-
 
