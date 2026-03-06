@@ -1127,7 +1127,7 @@
       empty.classList.add("hidden");
       content.classList.remove("hidden");
 
-      setText("detail-name", node.label);
+      setText("detail-name", node.id === "internet" ? node.label : d.process);
       setText("detail-sub", d.sub);
       setText("detail-process", d.process);
       setText("detail-port", d.port);
