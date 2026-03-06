@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Scudozi</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --bg-0: #07111f;
+      --bg-1: #0b1728;
+      --bg-2: #11233d;
+      --glass-border: rgba(255, 255, 255, 0.14);
+      --text: #eef4ff;
+      --muted: #aab9d4;
+      --safe: #32d583;
+      --lan: #67c3ff;
+      --warn: #f5b942;
+      --danger: #ff5d73;
+      --virtual: #b7a0ff;
+      --neutral: #8aa4d8;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 20%, rgba(80, 150, 255, 0.20), transparent 28%),
+        radial-gradient(circle at 85% 18%, rgba(98, 255, 199, 0.14), transparent 22%),
+        radial-gradient(circle at 50% 80%, rgba(255, 94, 126, 0.10), transparent 28%),
+        linear-gradient(160deg, var(--bg-0), var(--bg-1) 45%, var(--bg-2));
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: radial-gradient(circle at center, black 42%, transparent 90%);
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    .app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .glass {
+      background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06));
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .topbar {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      right: 24px;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(360px, 1.2fr) minmax(600px, 1fr);
+      gap: 18px;
+      pointer-events: none;
+    }
+
+    .topbar > * {
+      pointer-events: auto;
+    }
+
+    .hero {
+      padding: 20px 22px;
+      border-radius: var(--radius);
+      min-height: 112px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #b6c8ea;
+      opacity: 0.9;
+      margin-bottom: 8px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .shield {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(88, 155, 255, 0.8), rgba(88, 155, 255, 0.3));
+      box-shadow: 0 10px 30px rgba(61, 129, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+    }
+
+    h1 {
+      font-size: 32px;
+      line-height: 1;
+      margin: 0;
+      font-weight: 750;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 720px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(132px, 1fr));
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .stat-card {
+      padding: 16px;
+      border-radius: 20px;
+      min-height: 112px;
+      overflow: hidden;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #b8c6df;
+      margin-bottom: 10px;
+    }
+
+    .stat-value {
+      font-size: clamp(20px, 1.8vw, 34px);
+      font-weight: 760;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+      word-break: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .stat-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    #stat-os {
+      font-size: clamp(18px, 1.4vw, 28px);
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .stage {
+      position: absolute;
+      inset: 0;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .link {
+      stroke: rgba(163, 186, 226, 0.34);
+      stroke-width: 1.6;
+    }
+
+    .node {
+      cursor: pointer;
+    }
+
+    .node-ring {
+      fill: none;
+      stroke-width: 2;
+      opacity: 0.24;
+    }
+
+    .label {
+      fill: #f2f7ff;
+      font-size: 13px;
+      font-weight: 600;
+      paint-order: stroke;
+      stroke: rgba(6, 10, 18, 0.65);
+      stroke-width: 4px;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    .muted-label {
+      fill: #9fb0cf;
+      font-size: 11px;
+      font-weight: 500;
+      paint-order: stroke;
+      stroke: rgba(6, 10, 18, 0.6);
+      stroke-width: 3px;
+      pointer-events: none;
+    }
+
+    .side {
+      position: absolute;
+      top: 204px;
+      right: 24px;
+      bottom: 24px;
+      width: 430px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    .panel {
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+
+    .details {
+      flex: 1;
+      min-height: 320px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateX(24px);
+      pointer-events: none;
+      transition: opacity 260ms ease, transform 260ms ease;
+    }
+
+    .details.visible {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .panel-title h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #dce7fb;
+    }
+
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 14px currentColor;
+    }
+
+    .details-card {
+      flex: 1;
+      border-radius: 18px;
+      padding: 18px;
+      background: rgba(7, 14, 28, 0.42);
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .details-empty {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      color: var(--muted);
+      text-align: center;
+      padding: 20px;
+      border-radius: 18px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .node-name {
+      font-size: clamp(24px, 2vw, 34px);
+      font-weight: 760;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin: 0 0 8px 0;
+      overflow-wrap: anywhere;
+    }
+
+    .node-sub {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .kv:last-child {
+      border-bottom: none;
+    }
+
+    .kv-key {
+      color: #94a9cc;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .kv-value {
+      color: #edf4ff;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .legend {
+      display: grid;
+      gap: 12px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #deebff;
+      font-size: 14px;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      box-shadow: 0 0 18px currentColor;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+
+    .legend-panel-left {
+      position: fixed;
+      left: 24px;
+      bottom: 24px;
+      width: 320px;
+      z-index: 20;
+      pointer-events: auto;
+    }
+
+    .scan-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .scan-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    .scan-row span:first-child {
+      color: var(--muted);
+    }
+
+    .scan-row span:last-child {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .safe { color: var(--safe); }
+    .local { color: var(--safe); }
+    .lan { color: var(--lan); }
+    .warning { color: var(--warn); }
+    .potential { color: var(--warn); }
+    .danger { color: var(--danger); }
+    .public { color: var(--danger); }
+    .virtual { color: var(--virtual); }
+    .unknown { color: var(--neutral); }
+    .neutral { color: var(--neutral); }
+    .hidden { display: none; }
+
+    .danger-btn {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid rgba(255, 93, 115, 0.5);
+      background: linear-gradient(180deg, rgba(255, 93, 115, 0.28), rgba(255, 93, 115, 0.14));
+      color: #ffe7eb;
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+
+    .danger-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      place-items: center;
+      background: rgba(3, 10, 22, 0.35);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .modal-overlay.visible {
+      display: grid;
+    }
+
+    .modal {
+      width: min(520px, calc(100vw - 40px));
+      border-radius: 20px;
+      padding: 20px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 19px;
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.07);
+      color: #d9e6ff;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .modal-sub {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 14px 0;
+    }
+
+    .modal-input {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(9, 17, 34, 0.72);
+      color: var(--text);
+      padding: 11px 12px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .modal-status {
+      min-height: 18px;
+      color: #c7d7f7;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: none;
+      place-items: center;
+      background: rgba(4, 10, 20, 0.42);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .login-overlay.visible {
+      display: grid;
+    }
+
+    .login-card {
+      width: min(500px, calc(100vw - 40px));
+      border-radius: 20px;
+      padding: 22px;
+    }
+
+    .app.locked {
+      filter: blur(4px) saturate(0.86);
+      pointer-events: none;
+    }
+
+    @media (max-width: 1450px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+      }
+
+      .side {
+        top: 338px;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .stats {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+
+      .side,
+      .legend-panel-left {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app locked">
+    <div class="topbar">
+      <section class="hero glass">
+        <div class="eyebrow">Self-hosted security visibility</div>
+        <div class="title-row">
+          <div class="shield">🛡</div>
+          <div>
+            <h1>Scudozi</h1>
+            <p class="subtitle" id="subtitle">Real-time attack surface visualization for self-hosted systems.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="stats">
+        <div class="stat-card glass">
+          <div class="stat-label">Detected Services</div>
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-meta">Listening TCP services discovered</div>
+        </div>
+        <div class="stat-card glass">
+          <div class="stat-label">Non-Local Listeners</div>
+          <div class="stat-value" id="stat-exposed">0</div>
+          <div class="stat-meta">Likely reachable beyond localhost</div>
+        </div>
+        <div class="stat-card glass">
+          <div class="stat-label">Local Only</div>
+          <div class="stat-value" id="stat-safe">0</div>
+          <div class="stat-meta">Internal-only listeners</div>
+        </div>
+        <div class="stat-card glass">
+          <div class="stat-label">OS</div>
+          <div class="stat-value" id="stat-os">—</div>
+          <div class="stat-meta">Auto-detected at runtime</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="stage">
+      <svg id="graph"></svg>
+    </div>
+
+    <aside class="side">
+      <section class="panel details glass">
+        <div class="panel-title">
+          <h2>Node Details</h2>
+          <div class="pill" id="status-pill">
+            <span class="pill-dot neutral"></span>
+            <span id="status-pill-text">Idle</span>
+          </div>
+        </div>
+
+        <div class="details-card">
+          <div class="details-empty" id="details-empty">
+            <div>
+              <div style="font-size:18px;font-weight:700;margin-bottom:8px;">Select a node</div>
+              <div>Click any service to inspect its process, port, exposure, and risk.</div>
+            </div>
+          </div>
+
+          <div id="details-content" class="hidden">
+            <div>
+              <div class="node-name" id="detail-name">—</div>
+              <p class="node-sub" id="detail-sub">—</p>
+            </div>
+
+            <div>
+              <div class="kv"><div class="kv-key">Process</div><div class="kv-value" id="detail-process">—</div></div>
+              <div class="kv"><div class="kv-key">Port</div><div class="kv-value" id="detail-port">—</div></div>
+              <div class="kv"><div class="kv-key">Bound IP</div><div class="kv-value" id="detail-host">—</div></div>
+              <div class="kv"><div class="kv-key">Raw Bind</div><div class="kv-value" id="detail-raw">—</div></div>
+              <div class="kv"><div class="kv-key">Interface</div><div class="kv-value" id="detail-iface">—</div></div>
+              <div class="kv"><div class="kv-key">Exposure</div><div class="kv-value" id="detail-exposure">—</div></div>
+              <div class="kv"><div class="kv-key">Risk</div><div class="kv-value" id="detail-risk">—</div></div>
+            </div>
+            <button class="danger-btn" id="kill-process-btn" type="button">Kill Process</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel glass legend-panel-left">
+        <div class="panel-title">
+          <h2>Legend</h2>
+        </div>
+
+        <div class="legend">
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--safe); color: var(--safe);"></span>
+            <span>Local-only listener</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--lan); color: var(--lan);"></span>
+            <span>LAN reachable listener</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--warn); color: var(--warn);"></span>
+            <span>All interfaces / potentially external</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--danger); color: var(--danger);"></span>
+            <span>Public interface binding</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--virtual); color: var(--virtual);"></span>
+            <span>Virtual adapter binding</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="background: var(--neutral); color: var(--neutral);"></span>
+            <span>Unknown scope / informational</span>
+          </div>
+        </div>
+
+        <div class="footer-note">
+          Scope and likely reachability are passive local classifications, not confirmed internet exposure.
+        </div>
+      </section>
+    </aside>
+  </div>
+  <div class="login-overlay visible" id="login-overlay" aria-hidden="false">
+    <section class="login-card glass" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-head">
+        <h3 id="login-title">Sign In To Security Dashboard</h3>
+      </div>
+      <p class="modal-sub">Authenticate with SRP credentials generated at backend startup.</p>
+      <input class="modal-input" id="login-username" type="text" placeholder="Username" autocomplete="username" />
+      <input class="modal-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
+      <div class="modal-status" id="login-status"></div>
+      <button class="danger-btn" id="login-submit" type="button">Sign In</button>
+    </section>
+  </div>
+  <div class="modal-overlay" id="kill-modal-overlay" aria-hidden="true">
+    <section class="modal glass" role="dialog" aria-modal="true" aria-labelledby="kill-modal-title">
+      <div class="modal-head">
+        <h3 id="kill-modal-title">Confirm Process Termination</h3>
+        <button class="modal-close" id="kill-modal-close" type="button" aria-label="Close">x</button>
+      </div>
+      <p class="modal-sub" id="kill-modal-target">No target selected.</p>
+      <input class="modal-input" id="kill-admin-password" type="password" placeholder="Admin password" />
+      <div class="modal-status" id="kill-modal-status"></div>
+      <button class="danger-btn" id="kill-confirm-btn" type="button">Confirm Kill Process</button>
+    </section>
+  </div>
+
+  <script>
+    const svg = d3.select("#graph");
+    const graphRoot = svg.append("g");
+    const spawnLayer = graphRoot.append("g");
+    const linkLayer = graphRoot.append("g");
+    const nodeLayer = graphRoot.append("g");
+    const labelLayer = graphRoot.append("g");
+
+    let simulation = null;
+    let selectedNodeId = null;
+    let hoveredNodeId = null;
+    let latestPayload = null;
+    const nodePositions = new Map();
+    const knownNodeIds = new Set();
+    const knownEdgeKeys = new Set();
+    let hasRendered = false;
+    let selectedNodeData = null;
+    let graphTimer = null;
+    let sessionUser = null;
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    function getEl(id) {
+      return document.getElementById(id);
+    }
+
+    function formatNow() {
+      return new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    const SRP_N_HEX = "AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC3192943DB56050A37329CBB4A099ED8193E0757767A13DD52312AB4B03310DCD7F48A9DA04FD50E8083969EDB767B0CF6095179A163AB3661A05FBD5FAAAE82918A9962F0B93B855F97993EC975EEAA80D740ADBF4FF747359D041D5C33EA71D281E446B14773BCA97B43A23FB801676BD207A436C6481F1D2B9078717461A5B9D32E688F87748544523B524B0D57D5EA77A2775D2ECFA032CFBDBF52FB3786160279004E57AE6AF874E7303CE53299CCC041C7BC308D82A5698F3A8D0C38271AE35F8E9DBFBB694B5C803D89F7AE435DE236D525F54759B65E372FCD68EF20FA7111F9E4AFF73";
+    const SRP_G = 2n;
+    const SRP_N = BigInt(`0x${SRP_N_HEX}`);
+    const SRP_N_BYTES = SRP_N_HEX.length / 2;
+
+    function hexToBytes(hex) {
+      const clean = (hex || "").replace(/^0x/, "").toLowerCase();
+      const out = new Uint8Array(clean.length / 2);
+      for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+      }
+      return out;
+    }
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function bigIntToHex(v) {
+      return v.toString(16);
+    }
+
+    function padBigInt(v) {
+      return hexToBytes(v.toString(16).padStart(SRP_N_BYTES * 2, "0"));
+    }
+
+    async function sha256Bytes(...chunks) {
+      const size = chunks.reduce((a, c) => a + c.length, 0);
+      const merged = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const digest = await crypto.subtle.digest("SHA-256", merged);
+      return new Uint8Array(digest);
+    }
+
+    function xorBytes(a, b) {
+      const out = new Uint8Array(a.length);
+      for (let i = 0; i < a.length; i++) out[i] = a[i] ^ b[i];
+      return out;
+    }
+
+    function textBytes(s) {
+      return new TextEncoder().encode(s);
+    }
+
+    function modPow(base, exp, mod) {
+      let result = 1n;
+      let b = base % mod;
+      let e = exp;
+      while (e > 0n) {
+        if (e & 1n) result = (result * b) % mod;
+        e >>= 1n;
+        b = (b * b) % mod;
+      }
+      return result;
+    }
+
+    function randomBigInt(bytes = 32) {
+      const arr = new Uint8Array(bytes);
+      crypto.getRandomValues(arr);
+      return BigInt(`0x${bytesToHex(arr)}`);
+    }
+
+    function getCookie(name) {
+      const match = document.cookie.split("; ").find((row) => row.startsWith(`${name}=`));
+      return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : "";
+    }
+
+    async function apiFetch(url, options = {}) {
+      const opts = { credentials: "same-origin", ...options };
+      const csrf = getCookie("scudozi_csrf");
+      if (opts.method && opts.method !== "GET" && opts.method !== "HEAD" && csrf) {
+        opts.headers = { ...(opts.headers || {}), "X-CSRF-Token": csrf };
+      }
+      const res = await fetch(url, opts);
+      let payload = null;
+      const text = await res.text();
+      if (text) {
+        try { payload = JSON.parse(text); } catch (_) { payload = { error: text }; }
+      }
+      if (!res.ok) {
+        throw new Error((payload && (payload.error || payload.message)) || `Request failed (${res.status})`);
+      }
+      return payload;
+    }
+
+    async function srpAuth(username, password, purpose) {
+      const usernameClean = (username || "").trim();
+      if (!usernameClean || !password) throw new Error("Username and password are required.");
+
+      const a = randomBigInt(32);
+      const A = modPow(SRP_G, a, SRP_N);
+
+      const start = await apiFetch("/auth/srp/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: usernameClean, a: bigIntToHex(A), purpose })
+      });
+
+      const salt = hexToBytes(start.salt);
+      const B = BigInt(`0x${start.b}`);
+      const k = BigInt(`0x${bytesToHex(await sha256Bytes(padBigInt(SRP_N), padBigInt(SRP_G)))}`);
+      const xInner = await sha256Bytes(textBytes(`${usernameClean}:${password}`));
+      const x = BigInt(`0x${bytesToHex(await sha256Bytes(salt, xInner))}`);
+      const u = BigInt(`0x${bytesToHex(await sha256Bytes(padBigInt(A), padBigInt(B)))}`);
+
+      const gx = modPow(SRP_G, x, SRP_N);
+      let base = (B - ((k * gx) % SRP_N)) % SRP_N;
+      if (base < 0n) base += SRP_N;
+      const exp = a + (u * x);
+      const S = modPow(base, exp, SRP_N);
+      const K = await sha256Bytes(padBigInt(S));
+
+      const hn = await sha256Bytes(padBigInt(SRP_N));
+      const hg = await sha256Bytes(padBigInt(SRP_G));
+      const xor = xorBytes(hn, hg);
+      const hi = await sha256Bytes(textBytes(usernameClean));
+      const M1 = await sha256Bytes(xor, hi, salt, padBigInt(A), padBigInt(B), K);
+
+      const verify = await apiFetch("/auth/srp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: start.session_id,
+          a: bigIntToHex(A),
+          m1: bytesToHex(M1),
+        }),
+      });
+
+      const expectedM2 = await sha256Bytes(padBigInt(A), M1, K);
+      if ((verify.m2 || "").toLowerCase() !== bytesToHex(expectedM2)) {
+        throw new Error("Server proof verification failed.");
+      }
+      return verify;
+    }
+
+    function statusColor(status) {
+      const styles = getComputedStyle(document.documentElement);
+      if (status === "local" || status === "safe") return styles.getPropertyValue("--safe").trim();
+      if (status === "lan") return styles.getPropertyValue("--lan").trim();
+      if (status === "potential" || status === "warning") return styles.getPropertyValue("--warn").trim();
+      if (status === "public" || status === "danger") return styles.getPropertyValue("--danger").trim();
+      if (status === "virtual") return styles.getPropertyValue("--virtual").trim();
+      return styles.getPropertyValue("--neutral").trim();
+    }
+
+    function dedupeGraph(graph) {
+      const nodeMap = new Map();
+      const edgeMap = new Map();
+
+      for (const node of graph.nodes || []) {
+        if (!nodeMap.has(node.id)) nodeMap.set(node.id, { ...node });
+      }
+
+      for (const edge of graph.edges || []) {
+        const source = edge.source ?? edge.from;
+        const target = edge.target ?? edge.to;
+        if (!source || !target) continue;
+        const key = `${source}->${target}`;
+        if (!edgeMap.has(key)) edgeMap.set(key, { source, target });
+      }
+
+      return {
+        nodes: Array.from(nodeMap.values()),
+        edges: Array.from(edgeMap.values())
+      };
+    }
+
+    function edgeKey(edge) {
+      const source = typeof edge.source === "object" ? edge.source.id : edge.source;
+      const target = typeof edge.target === "object" ? edge.target.id : edge.target;
+      return `${source}->${target}`;
+    }
+
+    function shorten(text, maxLen) {
+      if (!text) return "";
+      if (text.length <= maxLen) return text;
+      return `${text.slice(0, Math.max(1, maxLen - 1))}\u2026`;
+    }
+
+    function compactNodeLabel(node) {
+      if (node.id === "internet") return "";
+      const process = node.process || "unknown";
+      const port = node.port || "";
+      const compact = port ? `${process}:${port}` : process;
+      return shorten(compact, 30);
+    }
+
+    function primaryLabelText(node) {
+      if (node.id === "internet") return "";
+      if (selectedNodeId === node.id || hoveredNodeId === node.id) {
+        return shorten(node.label || compactNodeLabel(node), 64);
+      }
+      return compactNodeLabel(node);
+    }
+
+    function secondaryLabelText(node) {
+      if (node.id === "internet") return "";
+      return (node.likely_reachability || "unknown").replaceAll("_", " ");
+    }
+
+    function intersects(a, b) {
+      return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
+    }
+
+    function applyLabelVisibility(allLabels) {
+      const boxes = [];
+      allLabels.each(function(d) {
+        const el = this;
+        el.style.opacity = "1";
+        const primaryText = el.querySelector(".label");
+        const secondaryText = el.querySelector(".muted-label");
+        if (!primaryText || !secondaryText) return;
+        secondaryText.style.display = "";
+
+        const bbox = primaryText.getBBox();
+        const pad = 3;
+        boxes.push({
+          id: d.id,
+          primaryText,
+          secondaryText,
+          box: {
+            x: bbox.x - pad,
+            y: bbox.y - pad,
+            width: bbox.width + pad*2,
+            height: bbox.height + pad*2,
+          },
+          priority: d.id === selectedNodeId ? 3 : d.id === hoveredNodeId ? 2 : d.id === "internet" ? 1 : 0
+        });
+      });
+
+      boxes.sort((a, b) => b.priority - a.priority);
+
+      const accepted = [];
+      for (const item of boxes) {
+        const overlap = accepted.some((k) => intersects(item.box, k.box));
+        if (overlap && item.priority === 0) {
+          item.secondaryText.style.display = "none";
+        }
+        accepted.push(item);
+      }
+    }
+
+    function parseNode(node) {
+      if (node.id === "internet") {
+        return {
+          process: "External Reachability",
+          port: "—",
+          host: "—",
+          pid: 0,
+          exposure: "Informational anchor",
+          risk: "Informational",
+          bindScope: "unknown",
+          likelyReachability: "unknown",
+          interfaceType: "informational",
+          sub: "Reference node for non-local listener paths"
+        };
+      }
+
+      const likely = node.likely_reachability || "unknown";
+      const bindScope = node.bind_scope || "unknown";
+      const interfaceType = node.interface_type || "unknown";
+      const process = node.process || "unknown";
+      const port = node.port || "—";
+      const host = node.host || "—";
+      const exposure = bindScope.replaceAll("_", " ");
+      const risk = likely.replaceAll("_", " ");
+      const sub = `Passive classification: ${bindScope.replaceAll("_", " ")} with ${likely.replaceAll("_", " ")} reachability.`;
+
+      return {
+        process,
+        port,
+        host,
+        pid: Number(node.pid || 0),
+        rawAddress: node.raw_address || `${host}:${port}`,
+        exposure,
+        risk,
+        bindScope,
+        likelyReachability: likely,
+        interfaceType,
+        sub
+      };
+    }
+
+    function updateDetails(node) {
+      const empty = document.getElementById("details-empty");
+      const content = document.getElementById("details-content");
+      const pillText = document.getElementById("status-pill-text");
+      const pillDot = document.querySelector("#status-pill .pill-dot");
+      const details = document.querySelector(".details");
+
+      if (!node) {
+        selectedNodeData = null;
+        details.classList.remove("visible");
+        empty.classList.remove("hidden");
+        content.classList.add("hidden");
+        pillText.textContent = "Idle";
+        pillDot.className = "pill-dot neutral";
+        return;
+      }
+
+      const d = parseNode(node);
+      selectedNodeData = { ...d, label: node.label };
+
+      details.classList.add("visible");
+      empty.classList.add("hidden");
+      content.classList.remove("hidden");
+
+      setText("detail-name", node.label);
+      setText("detail-sub", d.sub);
+      setText("detail-process", d.process);
+      setText("detail-port", d.port);
+      setText("detail-host", d.host);
+      setText("detail-raw", d.rawAddress);
+      setText("detail-iface", d.interfaceType);
+      setText("detail-exposure", d.exposure);
+      setText("detail-risk", d.risk);
+      const killBtn = getEl("kill-process-btn");
+      if (killBtn) {
+        const canKill = node.id !== "internet" && d.pid > 0;
+        killBtn.disabled = !canKill;
+        killBtn.textContent = canKill ? `Kill Process (PID ${d.pid})` : "Kill Process (PID unavailable)";
+      }
+
+      if (d.likelyReachability === "public_interface") {
+        pillText.textContent = "Public";
+      } else if (d.likelyReachability === "potentially_external") {
+        pillText.textContent = "Potential";
+      } else if (d.likelyReachability === "lan_reachable") {
+        pillText.textContent = "LAN";
+      } else if (d.likelyReachability === "local_only") {
+        pillText.textContent = "Local";
+      } else {
+        pillText.textContent = "Unknown";
+      }
+      pillDot.className = `pill-dot ${node.status || "neutral"}`;
+    }
+
+    function updateStats(payload, graph) {
+      const totalServices = Math.max(0, graph.nodes.length - 1);
+      const exposed = graph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability !== "local_only").length;
+      const safe = graph.nodes.filter((n) => n.id !== "internet" && n.likely_reachability === "local_only").length;
+
+      setText("stat-total", totalServices);
+      setText("stat-exposed", exposed);
+      setText("stat-safe", safe);
+      setText("stat-os", (payload.os || "—").toUpperCase());
+      setText("subtitle", `Real-time attack surface visualization for self-hosted systems on ${(payload.os || "unknown").toUpperCase()}.`);
+      setText("last-scan", formatNow());
+    }
+
+    function targetCenterX() {
+      return selectedNodeId ? window.innerWidth * 0.43 : window.innerWidth * 0.5;
+    }
+
+    function targetCenterY() {
+      return window.innerHeight * 0.56;
+    }
+
+    function applyCenterForce(reheat = false) {
+      if (!simulation) return;
+      const internet = simulation.nodes().find((n) => n.id === "internet");
+      if (internet) {
+        internet.fx = targetCenterX();
+        internet.fy = targetCenterY();
+      }
+      simulation.force("x", d3.forceX(targetCenterX()).strength(0.06));
+      simulation.force("y", d3.forceY(targetCenterY()).strength(0.06));
+      simulation.force("center", d3.forceCenter(targetCenterX(), targetCenterY()));
+      if (reheat) simulation.alpha(0.35).restart();
+    }
+
+    function render(payload) {
+      latestPayload = payload;
+      const graph = dedupeGraph(payload.graph || { nodes: [], edges: [] });
+
+      updateStats(payload, graph);
+
+      svg.attr("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+
+      if (simulation) simulation.stop();
+
+      const graphNodeIds = new Set(graph.nodes.map((n) => n.id));
+      for (const id of Array.from(nodePositions.keys())) {
+        if (!graphNodeIds.has(id)) nodePositions.delete(id);
+      }
+
+      graph.nodes.forEach((node, i) => {
+        const prev = nodePositions.get(node.id);
+        if (prev) {
+          node.x = prev.x;
+          node.y = prev.y;
+          node.vx = 0;
+          node.vy = 0;
+        } else {
+          node.x = targetCenterX() + Math.cos(i) * 140;
+          node.y = targetCenterY() + Math.sin(i) * 140;
+          node.vx = 0;
+          node.vy = 0;
+        }
+      });
+
+      const internet = graph.nodes.find((n) => n.id === "internet");
+      if (internet) {
+        internet.fx = targetCenterX();
+        internet.fy = targetCenterY();
+      }
+
+      const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
+      const animateSpawn = hasRendered;
+      const enteringNodeIds = new Set(graph.nodes.map((n) => n.id).filter((id) => !knownNodeIds.has(id)));
+      const enteringEdgeKeys = new Set(graph.edges.map((e) => edgeKey(e)).filter((k) => !knownEdgeKeys.has(k)));
+      const centerX = internet ? internet.x : targetCenterX();
+      const centerY = internet ? internet.y : targetCenterY();
+
+      if (animateSpawn) {
+        const spawnEdges = graph.edges.filter((edge) => {
+          const key = edgeKey(edge);
+          if (!enteringEdgeKeys.has(key)) return false;
+          const sid = typeof edge.source === "object" ? edge.source.id : edge.source;
+          const tid = typeof edge.target === "object" ? edge.target.id : edge.target;
+          return sid === "internet" || tid === "internet";
+        });
+
+        spawnLayer
+          .selectAll("line.spawn-link")
+          .data(spawnEdges, (d) => edgeKey(d))
+          .join(
+            (enter) =>
+              enter
+                .append("line")
+                .attr("class", "link spawn-link")
+                .attr("x1", centerX)
+                .attr("y1", centerY)
+                .attr("x2", centerX)
+                .attr("y2", centerY)
+                .attr("stroke-width", 2.2)
+                .style("opacity", 0.95)
+                .call((selection) =>
+                  selection
+                    .transition()
+                    .duration(180)
+                    .ease(d3.easeCubicOut)
+                    .attr("x2", (d) => {
+                      const sid = typeof d.source === "object" ? d.source.id : d.source;
+                      const tid = typeof d.target === "object" ? d.target.id : d.target;
+                      const growthId = sid === "internet" ? tid : sid;
+                      return nodeById.get(growthId)?.x ?? centerX;
+                    })
+                    .attr("y2", (d) => {
+                      const sid = typeof d.source === "object" ? d.source.id : d.source;
+                      const tid = typeof d.target === "object" ? d.target.id : d.target;
+                      const growthId = sid === "internet" ? tid : sid;
+                      return nodeById.get(growthId)?.y ?? centerY;
+                    })
+                    .style("opacity", 0)
+                    .remove()
+                )
+          );
+      }
+
+      const links = linkLayer
+        .selectAll("line")
+        .data(graph.edges, d => edgeKey(d));
+
+      links.exit().remove();
+
+      const linksEnter = links.enter()
+        .append("line")
+        .attr("class", "link");
+
+      const allLinks = linksEnter.merge(links);
+
+      const nodeJoin = nodeLayer
+        .selectAll("g.node-wrap")
+        .data(graph.nodes, d => d.id);
+
+      nodeJoin.exit().remove();
+
+      const nodeEnter = nodeJoin.enter()
+        .append("g")
+        .attr("class", "node-wrap");
+
+      nodeEnter.append("circle")
+        .attr("class", "node-ring")
+        .attr("r", d => (animateSpawn && enteringNodeIds.has(d.id) && d.id !== "internet") ? 0 : (d.id === "internet" ? 24 : 20))
+        .attr("stroke", d => statusColor(d.status));
+
+      nodeEnter.append("circle")
+        .attr("class", "node")
+        .attr("r", d => (animateSpawn && enteringNodeIds.has(d.id) && d.id !== "internet") ? 0 : (d.id === "internet" ? 16 : 13))
+        .attr("fill", d => d.id === "internet" ? "rgba(138,164,216,0.95)" : statusColor(d.status))
+        .attr("stroke", "rgba(255,255,255,0.85)")
+        .attr("stroke-width", 1.25);
+
+      const allNodes = nodeEnter.merge(nodeJoin);
+
+      allNodes.select(".node-ring")
+        .attr("stroke", d => statusColor(d.status));
+
+      allNodes.select(".node")
+        .attr("fill", d => d.id === "internet" ? "rgba(138,164,216,0.95)" : statusColor(d.status));
+
+      const labelJoin = labelLayer
+        .selectAll("g.label-wrap")
+        .data(graph.nodes, d => d.id);
+
+      labelJoin.exit().remove();
+
+      const labelEnter = labelJoin.enter()
+        .append("g")
+        .attr("class", "label-wrap");
+
+      labelEnter.append("text")
+        .attr("class", "label")
+        .text(d => primaryLabelText(d));
+
+      labelEnter.append("text")
+        .attr("class", "muted-label")
+        .attr("dy", 16)
+        .text(d => secondaryLabelText(d));
+
+      const allLabels = labelEnter.merge(labelJoin);
+
+      allLabels.select(".label").text((d) => primaryLabelText(d));
+      allLabels.select(".muted-label").text((d) => secondaryLabelText(d));
+
+      const nodeTitles = allNodes.selectAll("title").data((d) => [d]);
+      nodeTitles.enter().append("title");
+      allNodes.select("title")
+        .text((d) => {
+          if (d.id === "internet") return "External Reachability";
+          return `${d.label}\n${secondaryLabelText(d)}`;
+        });
+
+      if (animateSpawn) {
+        allNodes.select(".node-ring")
+          .filter((d) => enteringNodeIds.has(d.id) && d.id !== "internet")
+          .transition()
+          .duration(170)
+          .ease(d3.easeCubicOut)
+          .attr("r", 20);
+
+        allNodes.select(".node")
+          .filter((d) => enteringNodeIds.has(d.id) && d.id !== "internet")
+          .transition()
+          .duration(170)
+          .ease(d3.easeCubicOut)
+          .attr("r", 13);
+
+        labelEnter
+          .style("opacity", 0)
+          .transition()
+          .duration(170)
+          .style("opacity", 1);
+      }
+
+      simulation = d3.forceSimulation(graph.nodes)
+        .force("link", d3.forceLink(graph.edges).id(d => d.id).distance(d => d.source.id === "internet" ? 165 : 138).strength(0.66))
+        .force("charge", d3.forceManyBody().strength(-620))
+        .force("x", d3.forceX(targetCenterX()).strength(0.06))
+        .force("y", d3.forceY(targetCenterY()).strength(0.06))
+        .force("center", d3.forceCenter(targetCenterX(), targetCenterY()))
+        .force("collide", d3.forceCollide().radius(d => d.id === "internet" ? 62 : 46));
+
+      allLinks
+        .attr("stroke-width", 1.4)
+        .style("opacity", 1);
+
+      allNodes
+        .on("mouseenter", function(_, d) {
+          hoveredNodeId = d.id;
+          allLabels.select(".label").text((n) => primaryLabelText(n));
+          applyLabelVisibility(allLabels);
+        })
+        .on("mouseleave", function(_, d) {
+          if (hoveredNodeId === d.id) hoveredNodeId = null;
+          allLabels.select(".label").text((n) => primaryLabelText(n));
+          applyLabelVisibility(allLabels);
+        })
+        .on("click", function(_, d) {
+          selectedNodeId = d.id;
+          updateDetails(d);
+          applyCenterForce(true);
+          allLabels.select(".label").text((n) => primaryLabelText(n));
+
+          allNodes.select(".node-ring")
+            .attr("r", n => n.id === "internet" ? 24 : (selectedNodeId === n.id ? 24 : 20))
+            .style("opacity", n => selectedNodeId === n.id ? 0.46 : 0.24);
+
+          allLinks
+            .attr("stroke-width", l => (l.source.id === d.id || l.target.id === d.id) ? 2.6 : 1.4)
+            .style("opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.16);
+        });
+
+      simulation.on("tick", () => {
+        const padding = 28;
+        const maxRadius = selectedNodeId ? Math.min(window.innerWidth, window.innerHeight) * 0.29 : Math.min(window.innerWidth, window.innerHeight) * 0.33;
+        const cx = targetCenterX();
+        const cy = targetCenterY();
+
+        for (const node of graph.nodes) {
+          if (node.id === "internet") continue;
+
+          const dx = node.x - cx;
+          const dy = node.y - cy;
+          const dist = Math.hypot(dx, dy) || 1;
+          if (dist > maxRadius) {
+            const scale = maxRadius / dist;
+            node.x = cx + dx * scale;
+            node.y = cy + dy * scale;
+          }
+
+          node.x = Math.max(padding, Math.min(window.innerWidth - padding, node.x));
+          node.y = Math.max(padding, Math.min(window.innerHeight - padding, node.y));
+        }
+
+        allLinks
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        allNodes.attr("transform", d => `translate(${d.x},${d.y})`);
+        allLabels.attr("transform", d => `translate(${d.x + 22},${d.y - 4})`);
+        applyLabelVisibility(allLabels);
+
+        for (const node of graph.nodes) {
+          nodePositions.set(node.id, { x: node.x, y: node.y, vx: node.vx, vy: node.vy });
+        }
+      });
+
+      svg.on("click", (event) => {
+        if (event.target.closest && event.target.closest(".node")) return;
+
+        selectedNodeId = null;
+        hoveredNodeId = null;
+        updateDetails(null);
+        applyCenterForce(true);
+        allLabels.select(".label").text((n) => primaryLabelText(n));
+        applyLabelVisibility(allLabels);
+        allNodes.select(".node-ring")
+          .attr("r", n => n.id === "internet" ? 24 : 20)
+          .style("opacity", 0.24);
+        allLinks
+          .attr("stroke-width", 1.4)
+          .style("opacity", 1);
+      });
+
+      if (selectedNodeId) {
+        const selected = graph.nodes.find(n => n.id === selectedNodeId);
+        if (selected) {
+          updateDetails(selected);
+          applyCenterForce(false);
+          allLabels.select(".label").text((n) => primaryLabelText(n));
+          allNodes.select(".node-ring")
+            .attr("r", n => n.id === "internet" ? 24 : (selectedNodeId === n.id ? 24 : 20))
+            .style("opacity", n => selectedNodeId === n.id ? 0.46 : 0.24);
+          allLinks
+            .attr("stroke-width", l => (l.source.id === selected.id || l.target.id === selected.id) ? 2.6 : 1.4)
+            .style("opacity", l => (l.source.id === selected.id || l.target.id === selected.id) ? 1 : 0.16);
+        } else {
+          selectedNodeId = null;
+          updateDetails(null);
+          applyCenterForce(false);
+          allLabels.select(".label").text((n) => primaryLabelText(n));
+        }
+      } else {
+        updateDetails(null);
+        allLabels.select(".label").text((n) => primaryLabelText(n));
+      }
+
+      knownNodeIds.clear();
+      for (const node of graph.nodes) knownNodeIds.add(node.id);
+      knownEdgeKeys.clear();
+      for (const edge of graph.edges) knownEdgeKeys.add(edgeKey(edge));
+      hasRendered = true;
+    }
+
+    function setLoginVisible(visible) {
+      const overlay = getEl("login-overlay");
+      const app = document.querySelector(".app");
+      if (!overlay || !app) return;
+      overlay.classList.toggle("visible", visible);
+      app.classList.toggle("locked", visible);
+      overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (visible) {
+        getEl("login-password").value = "";
+      }
+    }
+
+    function setKillModalVisible(visible) {
+      const overlay = getEl("kill-modal-overlay");
+      overlay.classList.toggle("visible", visible);
+      overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (visible) {
+        getEl("kill-admin-password").value = "";
+        getEl("kill-admin-password").focus();
+      }
+    }
+
+    async function refreshSession() {
+      try {
+        const session = await apiFetch("/auth/session", { method: "GET" });
+        if (session && session.authenticated) {
+          sessionUser = session.username;
+          setLoginVisible(false);
+          return true;
+        }
+      } catch (_) {}
+      sessionUser = null;
+      setLoginVisible(true);
+      return false;
+    }
+
+    async function submitLogin() {
+      const username = getEl("login-username").value.trim();
+      const password = getEl("login-password").value;
+      const status = getEl("login-status");
+      status.textContent = "Authenticating...";
+      try {
+        await srpAuth(username, password, "login");
+        status.textContent = "";
+        if (await refreshSession()) {
+          await loadGraph();
+          if (!graphTimer) graphTimer = setInterval(loadGraph, 4000);
+        }
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    }
+
+    async function confirmKillProcess() {
+      const modalStatus = getEl("kill-modal-status");
+      if (!selectedNodeData) {
+        modalStatus.textContent = "No process selected.";
+        return;
+      }
+      if (!selectedNodeData.pid || selectedNodeData.pid <= 0) {
+        modalStatus.textContent = "No PID available for this node.";
+        return;
+      }
+      const password = getEl("kill-admin-password").value;
+      if (!password) {
+        modalStatus.textContent = "Admin password is required.";
+        return;
+      }
+      modalStatus.textContent = "Step-up verification...";
+
+      try {
+        const stepup = await srpAuth(sessionUser, password, "stepup");
+        await apiFetch("/process/kill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pid: selectedNodeData.pid,
+            process: selectedNodeData.process,
+            stepup_token: stepup.stepup_token,
+          }),
+        });
+        modalStatus.textContent = "Process terminated.";
+        setTimeout(() => setKillModalVisible(false), 600);
+        await loadGraph();
+      } catch (error) {
+        modalStatus.textContent = error.message;
+      }
+    }
+
+    async function loadGraph() {
+      try {
+        const payload = await apiFetch("/graph", { method: "GET", cache: "no-store" });
+        render(payload);
+      } catch (error) {
+        if ((error.message || "").toLowerCase().includes("unauthorized")) {
+          sessionUser = null;
+          setLoginVisible(true);
+          return;
+        }
+        setText("subtitle", `Graph load failed: ${error.message}`);
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      svg.attr("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+      applyCenterForce(true);
+    });
+
+    getEl("login-submit").addEventListener("click", submitLogin);
+    getEl("login-password").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submitLogin();
+    });
+
+    getEl("kill-process-btn").addEventListener("click", () => {
+      if (!selectedNodeData) return;
+      getEl("kill-modal-target").textContent = `${selectedNodeData.process} (PID ${selectedNodeData.pid || "unknown"})`;
+      getEl("kill-modal-status").textContent = "";
+      setKillModalVisible(true);
+    });
+    getEl("kill-confirm-btn").addEventListener("click", confirmKillProcess);
+    getEl("kill-modal-close").addEventListener("click", () => setKillModalVisible(false));
+    getEl("kill-modal-overlay").addEventListener("click", (e) => {
+      if (e.target.id === "kill-modal-overlay") setKillModalVisible(false);
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setKillModalVisible(false);
+    });
+
+    (async () => {
+      const authenticated = await refreshSession();
+      if (authenticated) {
+        await loadGraph();
+        graphTimer = setInterval(loadGraph, 4000);
+      }
+    })();
+  </script>
+</body>
+</html>
+
+
+
+
