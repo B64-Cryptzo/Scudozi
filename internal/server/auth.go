@@ -117,7 +117,8 @@ func initAuth() error {
 	srpG = big.NewInt(2)
 	nBytes = (srpN.BitLen() + 7) / 8
 
-	if strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_USER")) != "" && strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_PASS")) != "" {
+	usingEnvCreds := strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_USER")) != "" && strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_PASS")) != ""
+	if usingEnvCreds {
 		generatedUsername = strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_USER"))
 		generatedPassword = strings.TrimSpace(os.Getenv("SCUDOZI_DEMO_PASS"))
 	} else {
@@ -133,9 +134,13 @@ func initAuth() error {
 	logAudit("auth.credentials.generated", generatedUsername, "admin", "success", map[string]any{
 		"note": "Generated startup credentials for SRP login",
 	})
-	fmt.Printf("%s[Scudozi]%s SRP Username: %s\n", color("36"), color("0"), generatedUsername)
-	fmt.Printf("%s[Scudozi]%s SRP Password: %s\n", color("36"), color("0"), generatedPassword)
-	fmt.Printf("%s[Scudozi]%s Credentials regenerate on restart unless SCUDOZI_DEMO_USER/SCUDOZI_DEMO_PASS are set.\n", color("36"), color("0"))
+	if usingEnvCreds {
+		fmt.Printf("%s[Scudozi]%s Using credentials from SCUDOZI_DEMO_USER/SCUDOZI_DEMO_PASS (values hidden in console).\n", color("36"), color("0"))
+	} else {
+		fmt.Printf("%s[Scudozi]%s SRP Username: %s\n", color("36"), color("0"), generatedUsername)
+		fmt.Printf("%s[Scudozi]%s SRP Password: %s\n", color("36"), color("0"), generatedPassword)
+		fmt.Printf("%s[Scudozi]%s Credentials regenerate on restart unless SCUDOZI_DEMO_USER/SCUDOZI_DEMO_PASS are set.\n", color("36"), color("0"))
+	}
 	writeDemoCredsFile(generatedUsername, generatedPassword)
 	fmt.Printf("%s[Scudozi]%s Audit log file: %s\n", color("36"), color("0"), auditLogPath)
 	return nil
