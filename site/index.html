@@ -1410,7 +1410,7 @@
 
       simulation.force("link").links(graph.edges);
       applyCenterForce(false);
-      simulation.alphaTarget(0.032);
+      simulation.alphaTarget(0.02);
       simulation.alpha(0.22).restart();
 
       allLinks
@@ -1452,8 +1452,8 @@
         const cx = centerLerp.x;
         const cy = centerLerp.y;
         const now = performance.now() * 0.001;
-        const breathe = 1 + 0.14 * Math.sin(now * 1.8);
-        const rotationSpeed = 0.12;
+        const breathe = 1 + 0.9 * Math.sin(now * 1.1);
+        const rotationSpeed = 0.03;
         const rotationAngle = now * rotationSpeed;
 
         if (animationTick % 4 === 0) {
@@ -1493,8 +1493,8 @@
           let targetX = node.x;
           let targetY = node.y;
           if (node.id !== "internet") {
-            targetX += Math.cos(now * 1.95 + phase) * 6.8;
-            targetY += Math.sin(now * 1.65 + phase) * 5.9;
+            targetX += Math.cos(now * 1.05 + phase) * 3.8;
+            targetY += Math.sin(now * 1.01 + phase) * 2.9;
           }
           const prevDraw = displayNodePositions.get(node.id);
           const drawX = prevDraw ? prevDraw.x + (targetX - prevDraw.x) * 0.34 : targetX;
